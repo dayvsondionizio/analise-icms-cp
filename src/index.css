@@ -1,0 +1,90 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-navy: #001B3D;
+  --color-navy-light: #003366;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 font-sans;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 1cm;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+  
+  header, footer, nav {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    display: block !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Grid adjustment for print */
+  .grid {
+    display: grid !important;
+    gap: 1rem !important;
+  }
+
+  .md\:grid-cols-4 {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+
+  .md\:grid-cols-3 {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+
+  .glass-card {
+    box-shadow: none !important;
+    border: 1px solid #e2e8f0 !important;
+    break-inside: avoid !important;
+    padding: 1rem !important;
+  }
+
+  h2 { font-size: 1.5rem !important; margin-bottom: 0.5rem !important; }
+  h3 { font-size: 1.25rem !important; }
+  .text-4xl { font-size: 1.5rem !important; }
+  .text-5xl { font-size: 2rem !important; }
+  .p-8 { padding: 1rem !important; }
+  .p-12 { padding: 1.5rem !important; }
+  .py-24 { padding-top: 2rem !important; padding-bottom: 2rem !important; }
+  .mt-16 { margin-top: 1rem !important; }
+  .gap-8 { gap: 1rem !important; }
+  .gap-6 { gap: 0.75rem !important; }
+
+  /* Ensure motion/react or framer-motion doesn't mess up print with initial states */
+  * {
+    transform: none !important;
+    transition: none !important;
+    opacity: 1 !important;
+  }
+}
+
+.print-only {
+  display: none;
+}
+
+.glass-card {
+  @apply bg-white border border-slate-200 shadow-sm rounded-2xl;
+}
