@@ -167,7 +167,8 @@ export default function App() {
     const itemRules = new Map<string, TaxRule>();
 
     currentRules.forEach(r => {
-      const itemKey = `${normalizeStr(r.item)}|${r.hasIcms}`;
+      const itemKey = normalizeStr(r.item);
+      // Se houver regras duplicadas para o mesmo nome, a com maior situação (estorno/outros) prevalece
       if (!itemRules.has(itemKey) || r.situacao > itemRules.get(itemKey)!.situacao) {
         itemRules.set(itemKey, r);
       }
@@ -214,8 +215,8 @@ export default function App() {
       const rowNaturezaRaw = findValueInRow(row, ['NATUREZA', 'CFOP', 'COD PRODUTO', 'REF']);
       const rowNatureza = String(rowNaturezaRaw || '').trim();
 
-      // Find matching rule (Strictly Item Name + ICMS Condition)
-      const itemKey = `${normalizedItem}|${rowHasIcms}`;
+      // Find matching rule (Strictly by Normalized Item Name)
+      const itemKey = normalizedItem;
       let matchingRule = itemRules.get(itemKey);
       let matchType: 'ITEM' | 'NCM' | 'NONE' = matchingRule ? 'ITEM' : 'NONE';
 
@@ -308,7 +309,7 @@ export default function App() {
               const pendingRows = processed.filter(r => r.status === 'Pendente');
               const uniquePending = new Map<string, TaxRule>();
               pendingRows.forEach(r => {
-                const key = `${r.item}|${r.valorIcms > 0}`;
+                const key = r.item;
                 if (!uniquePending.has(key)) {
                   uniquePending.set(key, {
                     ncm: r.ncm,
@@ -400,7 +401,7 @@ export default function App() {
                 if (situacao === 2) acao = 'Outros Débitos';
                 else if (situacao === 3) acao = 'Estorno';
 
-                const key = `${item}|${hasIcms}`; 
+                const key = normalizeStr(item);
                 const existing = rulesMap.get(key);
                 
                 if (!existing) {
@@ -434,8 +435,8 @@ export default function App() {
               } else {
                 setRules(prev => {
                   const merged = new Map<string, TaxRule>();
-                  prev.forEach(r => merged.set(`${r.item}|${r.hasIcms}`, r));
-                  newRules.forEach(r => merged.set(`${r.item}|${r.hasIcms}`, r));
+                  prev.forEach(r => merged.set(normalizeStr(r.item), r));
+                  newRules.forEach(r => merged.set(normalizeStr(r.item), r));
                   return Array.from(merged.values());
                 });
               }
@@ -551,18 +552,18 @@ export default function App() {
         }
 
         // Update local rules
-        setRules(prev => {
-          const merged = new Map<string, TaxRule>();
-          prev.forEach(r => merged.set(`${r.item}|${r.hasIcms}`, r));
-          newRules.forEach(r => merged.set(`${r.item}|${r.hasIcms}`, r));
-          return Array.from(merged.values());
-        });
+          setRules(prev => {
+            const merged = new Map<string, TaxRule>();
+            prev.forEach(r => merged.set(normalizeStr(r.item), r));
+            newRules.forEach(r => merged.set(normalizeStr(r.item), r));
+            return Array.from(merged.values());
+          });
         
         // Final re-process of active analysis if current data exists
         if (rawData.length > 0) {
           const currentAllRules = Array.from(new Map([
-            ...rules.map(r => [`${r.item}|${r.hasIcms}`, r]),
-            ...newRules.map(r => [`${r.item}|${r.hasIcms}`, r])
+            ...rules.map(r => [normalizeStr(r.item), r]),
+            ...newRules.map(r => [normalizeStr(r.item), r])
           ].reverse()).values()) as TaxRule[];
           
           const newlyProcessed = processTaxData(rawData, currentAllRules);
@@ -571,7 +572,7 @@ export default function App() {
           const pendingRows = newlyProcessed.filter(r => r.status === 'Pendente');
           const uniquePending = new Map<string, TaxRule>();
           pendingRows.forEach(r => {
-            const key = `${r.item}|${r.valorIcms > 0}`;
+            const key = normalizeStr(r.item);
             if (!uniquePending.has(key)) {
               uniquePending.set(key, {
                 ncm: r.ncm,
@@ -651,8 +652,8 @@ export default function App() {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   };
 
-  const removeRule = (item: string, hasIcms: boolean) => {
-    setRules(prev => prev.filter(r => !(r.item === item && r.hasIcms === hasIcms)));
+  const removeRule = (item: string) => {
+    setRules(prev => prev.filter(r => normalizeStr(r.item) !== normalizeStr(item)));
   };
 
   const exportToExcel = () => {
@@ -729,7 +730,7 @@ export default function App() {
     try {
       const newRulesBatch = itemsToSave.map(key => {
         const [itemName, hasIcmsStr] = key.split('|');
-        const pending = pendingItems.find(p => p.item === itemName && String(p.hasIcms) === hasIcmsStr);
+        const pending = pendingItems.find(p => p.item === itemName);
         return {
           ncm: pending?.ncm || "",
           natureza: pending?.natureza || "",
@@ -743,7 +744,7 @@ export default function App() {
       // Update rules in state
       const nextRules = [...rules];
       newRulesBatch.forEach(nr => {
-        const idx = nextRules.findIndex(r => r.item === nr.item && r.hasIcms === nr.hasIcms);
+        const idx = nextRules.findIndex(r => normalizeStr(r.item) === normalizeStr(nr.item));
         if (idx >= 0) nextRules[idx] = nr;
         else nextRules.push(nr);
       });
@@ -756,7 +757,7 @@ export default function App() {
       const pendingRows = newlyProcessed.filter(r => r.status === 'Pendente');
       const uniquePending = new Map<string, TaxRule>();
       pendingRows.forEach(r => {
-        const key = `${r.item}|${r.valorIcms > 0}`;
+        const key = normalizeStr(r.item);
         if (!uniquePending.has(key)) {
           uniquePending.set(key, {
             ncm: r.ncm,
@@ -1121,7 +1122,7 @@ export default function App() {
                           </thead>
                           <tbody className="divide-y divide-amber-100 bg-white/30">
                             {pendingItems.map((item) => {
-                              const key = `${item.item}|${item.hasIcms}`;
+                              const key = normalizeStr(item.item);
                               return (
                                 <tr key={key} className="hover:bg-white/60 transition-colors">
                                   <td className="px-8 py-4">
@@ -1428,7 +1429,7 @@ export default function App() {
                         </td>
                         <td className="px-8 py-5 text-right">
                           <button 
-                            onClick={() => removeRule(rule.item, rule.hasIcms)}
+                            onClick={() => removeRule(rule.item)}
                             className="p-2 text-slate-300 hover:text-red-500 transition-colors"
                           >
                             <Trash2 size={18} />
