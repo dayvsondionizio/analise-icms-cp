@@ -68,6 +68,9 @@ const parseNumeric = (val: any): number => {
 const normalizeStr = (s: string) => 
   String(s || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, "");
 
+// Clean NCM/Natureza codes for uniform comparison
+const cleanFiscalCode = (s: any) => String(s || '').trim().replace(/[^0-9]/g, '');
+
 
 // --- Types ---
 
@@ -92,6 +95,7 @@ interface TaxRow {
   outrosDebitos: number;
   estornoDebito: number;
   status: 'Normal' | 'Outros Débitos' | 'Estorno' | 'Pendente';
+  matchType?: 'ITEM' | 'NCM' | 'NONE';
 }
 
 // --- Initial Rules Database (Local Simulation) ---
@@ -159,6 +163,34 @@ export default function App() {
   const processTaxData = (rawData: any[], currentRules: TaxRule[]) => {
     if (!Array.isArray(rawData)) return [];
     
+    // Pre-index rules for O(1) lookup
+    const itemRules = new Map<string, TaxRule>();
+    const ncmRules = new Map<string, TaxRule>();
+    const naturezaRules = new Map<string, TaxRule>();
+
+    currentRules.forEach(r => {
+      const itemKey = `${normalizeStr(r.item)}|${r.hasIcms}`;
+      if (!itemRules.has(itemKey) || r.situacao > itemRules.get(itemKey)!.situacao) {
+        itemRules.set(itemKey, r);
+      }
+      
+      const cleanNcm = cleanFiscalCode(r.ncm);
+      if (cleanNcm && cleanNcm.length >= 4) {
+        const ncmKey = `${cleanNcm}|${r.hasIcms}`;
+        if (!ncmRules.has(ncmKey) || r.situacao > ncmRules.get(ncmKey)!.situacao) {
+          ncmRules.set(ncmKey, r);
+        }
+      }
+
+      const cleanNat = cleanFiscalCode(r.natureza);
+      if (cleanNat) {
+        const natKey = `${cleanNat}|${r.hasIcms}`;
+        if (!naturezaRules.has(natKey) || r.situacao > naturezaRules.get(natKey)!.situacao) {
+          naturezaRules.set(natKey, r);
+        }
+      }
+    });
+
     const findValueInRow = (r: any, possibleNames: string[]) => {
       const keys = Object.keys(r);
       const cleanNames = possibleNames.map(n => n.toUpperCase().replace(/\s/g, "").normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
@@ -180,19 +212,42 @@ export default function App() {
         return null;
       }
 
-      const normalizedItem = normalizeStr(itemName);
-
       const valorContabilRaw = findValueInRow(row, ['VALOR CONTABIL', 'VALOR_CONTABIL', 'CONTABIL', 'VALOR TOTAL']);
       const valorContabil = parseNumeric(valorContabilRaw);
+      
+      // Robust ICMS detection in audit file (numeric or text)
       const valorIcmsRaw = findValueInRow(row, ['VALOR ICMS', 'ICMS', 'VALOR_ICMS', 'VALOR ICM']);
+      const temIcmsRaw = findValueInRow(row, ['TEM ICMS', 'ICMS', 'COM ICMS', 'TEM_ICMS']);
+      
+      let rowHasIcms = parseNumeric(valorIcmsRaw) > 0;
+      if (!rowHasIcms && temIcmsRaw) {
+        const cleanTem = String(temIcmsRaw).trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        rowHasIcms = ['SIM', 'S', 'TRUE'].includes(cleanTem);
+      }
+
       const valorIcms = parseNumeric(valorIcmsRaw);
+      const normalizedItem = normalizeStr(itemName);
+      const rowNcmRaw = findValueInRow(row, ['NCM', 'CODIGO NCM', 'CÓDIGO NCM']);
+      const rowNcm = String(rowNcmRaw || '').trim();
+      const rowNaturezaRaw = findValueInRow(row, ['NATUREZA', 'CFOP', 'COD PRODUTO', 'REF']);
+      const rowNatureza = String(rowNaturezaRaw || '').trim();
 
-      const rowHasIcms = valorIcms > 0;
+      // Find matching rule (Priority: Item Name > NCM > Natureza)
+      const itemKey = `${normalizedItem}|${rowHasIcms}`;
+      let matchingRule = itemRules.get(itemKey);
+      let matchType: 'ITEM' | 'NCM' | 'NONE' = matchingRule ? 'ITEM' : 'NONE';
 
-      // Find matching rule (Item + ICMS Condition)
-      const matchingRule = currentRules.find(r => 
-        normalizeStr(r.item) === normalizedItem && r.hasIcms === rowHasIcms
-      );
+      if (!matchingRule && rowNcm) {
+        const ncmKey = `${cleanFiscalCode(rowNcm)}|${rowHasIcms}`;
+        matchingRule = ncmRules.get(ncmKey);
+        if (matchingRule) matchType = 'NCM';
+      }
+
+      if (!matchingRule && rowNatureza) {
+        const natKey = `${cleanFiscalCode(rowNatureza)}|${rowHasIcms}`;
+        matchingRule = naturezaRules.get(natKey);
+        if (matchingRule) matchType = 'ITEM'; // Treat as item match for UI simplicity
+      }
 
       let status: 'Normal' | 'Outros Débitos' | 'Estorno' | 'Pendente' = 'Normal';
       let outrosDebitos = 0;
@@ -218,7 +273,7 @@ export default function App() {
 
       return {
         id: `row-${index}`,
-        ncm: String(findValueInRow(row, ['NCM', 'CODIGO NCM']) || ''),
+        ncm: rowNcm,
         natureza: String(findValueInRow(row, ['NATUREZA', 'CFOP', 'NAT']) || ''),
         item: itemName,
         valorContabil,
@@ -227,7 +282,8 @@ export default function App() {
         valorIcms: status === 'Estorno' ? 0 : (status === 'Outros Débitos' ? outrosDebitos : valorIcms),
         outrosDebitos,
         estornoDebito,
-        status
+        status,
+        matchType
       };
     }).filter(Boolean) as TaxRow[];
   };
@@ -330,17 +386,17 @@ export default function App() {
                 const item = String(itemRaw || '').trim().toUpperCase();
                 if (!item) return;
 
-                const ncmRaw = findValue(['NCM', 'CÓDIGO NCM', 'CÓD. NCM']);
+                const ncmRaw = findValue(['NCM', 'CÓDIGO NCM', 'CÓD. NCM', 'NATUREZA', 'NATURE', 'NAT']);
                 let ncm = String(ncmRaw || '').trim();
                 // If it's stored as scientific notation or something, stringify cleanly
                 if (typeof ncmRaw === 'number') {
                   ncm = ncmRaw.toString();
                 }
 
-                const naturezaRaw = findValue(['NATUREZA', 'CFOP']);
+                const naturezaRaw = findValue(['NATUREZA', 'CFOP', 'NATURE']);
                 const natureza = String(naturezaRaw || '').trim().toUpperCase();
                 const situacaoRaw = findValue(
-                  ['SITUACAO', 'SITUCAO', 'STATUS', 'SIT', 'ACAO', 'AÇÃO', 'CLASSIFICACAO', 'TIPO', 'CST'], 
+                  ['SITUACAO', 'SITUÇÃO', 'SITUCAO', 'STATUS', 'SIT', 'ACAO', 'AÇÃO', 'CLASSIFICACAO', 'TIPO', 'CST'], 
                   ['SITU', 'CLASS', 'TRIBUT']
                 );
                 
@@ -358,7 +414,7 @@ export default function App() {
                 }
 
                 const valorIcmsRaw = findValue(
-                  ['VALOR ICMS', 'ICMS', 'VALORICMS', 'TEM ICMS', 'CONDICAO ICMS', 'STATUS ICMS', 'DESTACA ICMS']
+                  ['VALOR ICMS', 'ICMS', 'VALORICMS', 'TEM ICMS', 'CONDICAO ICMS', 'STATUS ICMS', 'DESTACA ICMS', 'BASE CALCULO ICM', 'BASE CALCULO ICMS', 'BASE CÁLCULO ICM']
                 );
                 let hasIcms = false;
                 if (typeof valorIcmsRaw === 'string') {
@@ -1098,7 +1154,12 @@ export default function App() {
                               const key = `${item.item}|${item.hasIcms}`;
                               return (
                                 <tr key={key} className="hover:bg-white/60 transition-colors">
-                                  <td className="px-8 py-4 font-mono text-xs font-black text-slate-400 tracking-tighter">{item.ncm}</td>
+                                  <td className="px-8 py-4">
+                                    <div className="flex flex-col">
+                                      <span className="font-mono text-[10px] font-black text-slate-400 tracking-tighter">{item.ncm || '-'}</span>
+                                      <span className="text-[10px] font-bold text-slate-300 uppercase">{item.natureza}</span>
+                                    </div>
+                                  </td>
                                   <td className="px-8 py-4">
                                     <span className="text-sm font-black text-navy uppercase">{item.item}</span>
                                   </td>
@@ -1183,7 +1244,14 @@ export default function App() {
                             >
                               <td className="px-8 py-5 font-mono text-xs font-black text-slate-400 tracking-tighter">{row.ncm}</td>
                               <td className="px-8 py-5">
-                                <span className="text-sm font-black text-navy uppercase">{row.item}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-black text-navy uppercase">{row.item}</span>
+                                  {row.matchType === 'NCM' && (
+                                    <span className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded text-[8px] font-black uppercase tracking-tighter" title="Correspondência via NCM">
+                                      NCM Match
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="px-8 py-5 text-right text-sm font-black text-slate-600">{formatCurrency(row.valorContabil)}</td>
                               <td className="px-8 py-5 text-center">
@@ -1245,8 +1313,8 @@ export default function App() {
                   <h4 className="text-blue-800 font-black text-xs uppercase tracking-widest mb-3 flex items-center justify-center gap-2">
                     <FileSpreadsheet size={16} /> Formato da Planilha
                   </h4>
-                  <div className="flex justify-center gap-2">
-                    {['NCM', 'NATUREZA', 'ITEM', 'VALOR ICMS', 'SITUAÇÃO'].map(col => (
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {['NCM', 'NATUREZA', 'ITEM', 'BASE CÁLCULO ICM', 'SITUAÇÃO'].map(col => (
                       <span key={col} className="px-2 py-1 bg-white border border-blue-200 rounded text-[10px] font-black text-blue-600">
                         {col}
                       </span>
