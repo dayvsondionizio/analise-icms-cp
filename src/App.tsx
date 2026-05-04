@@ -42,6 +42,33 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Robust numeric parser for Brazilian and US formats
+const parseNumeric = (val: any): number => {
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  if (val === undefined || val === null || val === '') return 0;
+  let str = String(val).trim();
+  str = str.replace(/[R$\s]/g, ''); // Remove currency symbols and spaces
+
+  
+  if (str.includes(',') && str.includes('.')) {
+    if (str.indexOf('.') < str.indexOf(',')) {
+      str = str.replace(/\./g, '').replace(',', '.'); // 1.234,56 -> 1234.56
+    } else {
+      str = str.replace(/,/g, ''); // 1,234.56 -> 1234.56
+    }
+  } else if (str.includes(',')) {
+    str = str.replace(',', '.'); // 1234,56 -> 1234.56
+  }
+  
+  const num = parseFloat(str);
+  return isNaN(num) ? 0 : num;
+};
+
+// String normalization for resilient matching
+const normalizeStr = (s: string) => 
+  String(s || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, "");
+
+
 // --- Types ---
 
 interface TaxRule {
@@ -106,12 +133,27 @@ export default function App() {
   const dashboardRef = useRef<HTMLDivElement>(null);
 
   const fetchRules = async () => {
-    // Pure Client-Side: No rules fetched from server
+    const saved = localStorage.getItem('tax_rules_cp');
+    if (saved) {
+      try {
+        setRules(JSON.parse(saved));
+      } catch (err) {
+        console.error("Erro ao carregar regras locais:", err);
+      }
+    }
   };
 
   useEffect(() => {
     fetchRules();
   }, []);
+
+  // Persist rules to localStorage whenever they change
+  useEffect(() => {
+    if (rules.length >= 0) {
+      localStorage.setItem('tax_rules_cp', JSON.stringify(rules));
+    }
+  }, [rules]);
+
 
   // Process data based on current rules
   const processTaxData = (rawData: any[], currentRules: TaxRule[]) => {
@@ -128,16 +170,28 @@ export default function App() {
     };
 
     return rawData.map((row, index) => {
-      if (!row) return null;
+      if (!row || Object.keys(row).length === 0) return null;
       
-      const itemName = String(findValueInRow(row, ['ITEM', 'PRODUTO', 'DESCRICAO']) || '').trim().toUpperCase();
-      const valorContabil = Number(findValueInRow(row, ['VALOR CONTABIL', 'VALOR_CONTABIL', 'CONTABIL', 'VALOR TOTAL']) || 0);
-      const valorIcms = Number(findValueInRow(row, ['VALOR ICMS', 'ICMS', 'VALOR_ICMS', 'VALOR ICM']) || 0);
+      const itemRaw = findValueInRow(row, ['ITEM', 'PRODUTO', 'DESCRICAO']);
+      const itemName = String(itemRaw || '').trim().toUpperCase();
+      
+      // Ignore empty items or rows that look like totals/summaries
+      if (!itemName || itemName === 'TOTAL' || itemName === 'SUBTOTAL' || itemName.includes('TOTAL DA NOTA')) {
+        return null;
+      }
+
+      const normalizedItem = normalizeStr(itemName);
+
+      const valorContabilRaw = findValueInRow(row, ['VALOR CONTABIL', 'VALOR_CONTABIL', 'CONTABIL', 'VALOR TOTAL']);
+      const valorContabil = parseNumeric(valorContabilRaw);
+      const valorIcmsRaw = findValueInRow(row, ['VALOR ICMS', 'ICMS', 'VALOR_ICMS', 'VALOR ICM']);
+      const valorIcms = parseNumeric(valorIcmsRaw);
+
       const rowHasIcms = valorIcms > 0;
 
       // Find matching rule (Item + ICMS Condition)
       const matchingRule = currentRules.find(r => 
-        r.item && r.item.trim().toUpperCase() === itemName && r.hasIcms === rowHasIcms
+        normalizeStr(r.item) === normalizedItem && r.hasIcms === rowHasIcms
       );
 
       let status: 'Normal' | 'Outros Débitos' | 'Estorno' | 'Pendente' = 'Normal';
@@ -157,6 +211,7 @@ export default function App() {
       } else {
         status = 'Pendente';
       }
+
 
       const cstRaw = findValueInRow(row, ['CST', 'CST ICMS', 'CST_ICMS']);
       const bcRaw = findValueInRow(row, ['BASE CALCULO', 'BASE CALCULO ICMS', 'BASE CALCULO ICM', 'BASE_CALCULO']);
@@ -308,10 +363,11 @@ export default function App() {
                 let hasIcms = false;
                 if (typeof valorIcmsRaw === 'string') {
                   const cleanVal = valorIcmsRaw.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                  hasIcms = cleanVal === 'SIM' || cleanVal === 'S' || cleanVal === 'TRUE' || cleanVal.includes('SIM') || cleanVal.includes('COM ICMS') || Number(cleanVal) > 0;
+                  hasIcms = cleanVal === 'SIM' || cleanVal === 'S' || cleanVal === 'TRUE' || cleanVal.includes('SIM') || cleanVal.includes('COM ICMS') || parseNumeric(cleanVal) > 0;
                 } else if (valorIcmsRaw !== undefined && valorIcmsRaw !== null) {
-                  hasIcms = Number(valorIcmsRaw) > 0;
+                  hasIcms = parseNumeric(valorIcmsRaw) > 0;
                 }
+
 
                 // Determine action from Situacao
                 let acao: 'Outros Débitos' | 'Estorno' | 'Normal' = 'Normal';
@@ -442,20 +498,24 @@ export default function App() {
 
           let hasIcms = false;
           if (typeof hasIcmsRaw === 'string') {
-            hasIcms = ['SIM', 'S', 'TRUE'].includes(hasIcmsRaw.trim().toUpperCase());
+            const clean = hasIcmsRaw.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            hasIcms = ['SIM', 'S', 'TRUE'].includes(clean);
+          } else if (hasIcmsRaw !== undefined) {
+            hasIcms = parseNumeric(hasIcmsRaw) > 0;
           }
 
           // Try to find NCM and Natureza from existing data if possible, else empty
-          const existingPending = pendingItems.find(p => p.item === item && p.hasIcms === hasIcms);
+          const existingPending = pendingItems.find(p => normalizeStr(p.item) === normalizeStr(item) && p.hasIcms === hasIcms);
 
           newRules.push({
-            ncm: existingPending?.ncm || "",
-            natureza: existingPending?.natureza || "",
+            ncm: existingPending?.ncm || String(findValue(['NCM', 'CODIGO NCM']) || ''),
+            natureza: existingPending?.natureza || String(findValue(['NATUREZA', 'CFOP', 'NAT']) || ''),
             item,
             hasIcms,
             situacao,
             acao: situacao === 2 ? 'Outros Débitos' : situacao === 3 ? 'Estorno' : 'Normal'
           });
+
         });
 
         if (newRules.length === 0) {
@@ -604,17 +664,29 @@ export default function App() {
       'NATUREZA': r.natureza,
       'ITEM': r.item,
       'TEM ICMS': r.hasIcms ? 'SIM' : 'NÃO',
-      'SITUAÇÃO': '' // Analyst will fill this
+      'SITUAÇÃO': '' // Analista preencherá (1, 2 ou 3)
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
+    
+    // Auto-adjust column widths
+    const wscols = [
+      {wch: 15}, // NCM
+      {wch: 15}, // NATUREZA
+      {wch: 50}, // ITEM
+      {wch: 12}, // TEM ICMS
+      {wch: 12}  // SITUAÇÃO
+    ];
+    worksheet['!cols'] = wscols;
+
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Itens_Pendentes");
     
     const fileName = `${companyName || 'Apuração'}_ITENS_PENDENTES.xlsx`;
     XLSX.writeFile(workbook, fileName);
-    alert(`Exportado ${pendingItems.length} itens pendentes. O analista deve preencher a coluna SITUAÇÃO (1, 2 ou 3) e re-importar no Banco de Regras.`);
+    alert(`Exportado ${pendingItems.length} itens pendentes. Preencha a coluna SITUAÇÃO (1, 2 ou 3) e re-importe no Banco de Regras.`);
   };
+
 
   const exportToPDF = () => {
     window.print();
