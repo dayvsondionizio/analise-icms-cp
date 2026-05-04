@@ -165,29 +165,11 @@ export default function App() {
     
     // Pre-index rules for O(1) lookup
     const itemRules = new Map<string, TaxRule>();
-    const ncmRules = new Map<string, TaxRule>();
-    const naturezaRules = new Map<string, TaxRule>();
 
     currentRules.forEach(r => {
       const itemKey = `${normalizeStr(r.item)}|${r.hasIcms}`;
       if (!itemRules.has(itemKey) || r.situacao > itemRules.get(itemKey)!.situacao) {
         itemRules.set(itemKey, r);
-      }
-      
-      const cleanNcm = cleanFiscalCode(r.ncm);
-      if (cleanNcm && cleanNcm.length >= 4) {
-        const ncmKey = `${cleanNcm}|${r.hasIcms}`;
-        if (!ncmRules.has(ncmKey) || r.situacao > ncmRules.get(ncmKey)!.situacao) {
-          ncmRules.set(ncmKey, r);
-        }
-      }
-
-      const cleanNat = cleanFiscalCode(r.natureza);
-      if (cleanNat) {
-        const natKey = `${cleanNat}|${r.hasIcms}`;
-        if (!naturezaRules.has(natKey) || r.situacao > naturezaRules.get(natKey)!.situacao) {
-          naturezaRules.set(natKey, r);
-        }
       }
     });
 
@@ -232,22 +214,10 @@ export default function App() {
       const rowNaturezaRaw = findValueInRow(row, ['NATUREZA', 'CFOP', 'COD PRODUTO', 'REF']);
       const rowNatureza = String(rowNaturezaRaw || '').trim();
 
-      // Find matching rule (Priority: Item Name > NCM > Natureza)
+      // Find matching rule (Strictly Item Name + ICMS Condition)
       const itemKey = `${normalizedItem}|${rowHasIcms}`;
       let matchingRule = itemRules.get(itemKey);
       let matchType: 'ITEM' | 'NCM' | 'NONE' = matchingRule ? 'ITEM' : 'NONE';
-
-      if (!matchingRule && rowNcm) {
-        const ncmKey = `${cleanFiscalCode(rowNcm)}|${rowHasIcms}`;
-        matchingRule = ncmRules.get(ncmKey);
-        if (matchingRule) matchType = 'NCM';
-      }
-
-      if (!matchingRule && rowNatureza) {
-        const natKey = `${cleanFiscalCode(rowNatureza)}|${rowHasIcms}`;
-        matchingRule = naturezaRules.get(natKey);
-        if (matchingRule) matchType = 'ITEM'; // Treat as item match for UI simplicity
-      }
 
       let status: 'Normal' | 'Outros Débitos' | 'Estorno' | 'Pendente' = 'Normal';
       let outrosDebitos = 0;
@@ -1246,11 +1216,6 @@ export default function App() {
                               <td className="px-8 py-5">
                                 <div className="flex items-center gap-2">
                                   <span className="text-sm font-black text-navy uppercase">{row.item}</span>
-                                  {row.matchType === 'NCM' && (
-                                    <span className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded text-[8px] font-black uppercase tracking-tighter" title="Correspondência via NCM">
-                                      NCM Match
-                                    </span>
-                                  )}
                                 </div>
                               </td>
                               <td className="px-8 py-5 text-right text-sm font-black text-slate-600">{formatCurrency(row.valorContabil)}</td>
