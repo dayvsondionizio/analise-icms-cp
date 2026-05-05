@@ -226,8 +226,13 @@ export default function App() {
 
       if (matchingRule) {
         if (matchingRule.situacao === 2) {
-          status = 'Outros Débitos';
-          outrosDebitos = valorContabil * 0.205; 
+          // Priority: If the item already has ICMS highlighted, treat as Normal even if rule says Outros Débitos
+          if (valorIcms > 0) {
+            status = 'Normal';
+          } else {
+            status = 'Outros Débitos';
+            outrosDebitos = valorContabil * 0.205; 
+          }
         } else if (matchingRule.situacao === 3) {
           status = 'Estorno';
           estornoDebito = valorIcms;
