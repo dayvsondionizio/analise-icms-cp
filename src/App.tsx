@@ -167,11 +167,9 @@ export default function App() {
     const itemRules = new Map<string, TaxRule>();
 
     currentRules.forEach(r => {
-      const itemKey = normalizeStr(r.item);
-      // Se houver regras duplicadas para o mesmo nome, a com maior situação (estorno/outros) prevalece
-      if (!itemRules.has(itemKey) || r.situacao > itemRules.get(itemKey)!.situacao) {
-        itemRules.set(itemKey, r);
-      }
+      const itemKey = normalizeStr(r.item) + '_' + r.hasIcms;
+      // Em caso de duplicatas pontuais, a última prevalece
+      itemRules.set(itemKey, r);
     });
 
     const findValueInRow = (r: any, possibleNames: string[]) => {
@@ -215,8 +213,8 @@ export default function App() {
       const rowNaturezaRaw = findValueInRow(row, ['NATUREZA', 'CFOP', 'COD PRODUTO', 'REF']);
       const rowNatureza = String(rowNaturezaRaw || '').trim();
 
-      // Find matching rule (Strictly by Normalized Item Name)
-      const itemKey = normalizedItem;
+      // Find matching rule by Normalized Item Name AND ICMS presence
+      const itemKey = normalizedItem + '_' + rowHasIcms;
       let matchingRule = itemRules.get(itemKey);
       let matchType: 'ITEM' | 'NCM' | 'NONE' = matchingRule ? 'ITEM' : 'NONE';
 
@@ -406,19 +404,9 @@ export default function App() {
                 if (situacao === 2) acao = 'Outros Débitos';
                 else if (situacao === 3) acao = 'Estorno';
 
-                const key = normalizeStr(item);
-                const existing = rulesMap.get(key);
-                
-                if (!existing) {
-                  rulesMap.set(key, { ncm, natureza, item, hasIcms, situacao, acao });
-                } else {
-                  if (situacao > existing.situacao) {
-                    existing.situacao = situacao;
-                    existing.acao = acao;
-                  }
-                  if (!existing.ncm && ncm) existing.ncm = ncm;
-                  if (!existing.natureza && natureza) existing.natureza = natureza;
-                }
+                const key = normalizeStr(item) + '_' + hasIcms;
+                // Sobrescreve com a regra mais recente (a última lida na planilha)
+                rulesMap.set(key, { ncm, natureza, item, hasIcms, situacao, acao });
               });
 
               // Filter out rules that don't have situations > 1 if they are "duplicates" 
@@ -437,21 +425,45 @@ export default function App() {
               // Update rules in state
               if (mode === 'replace') {
                 setRules(newRules);
+                setIsImportingRules(false);
+                let msg = `${newRules.length} regras substituídas com sucesso!`;
+                if (!foundSituacaoColumn) {
+                  msg += "\n\n⚠️ AVISO: A coluna de 'SITUAÇÃO' não foi encontrada. Todos os itens foram salvos como Situação 1.";
+                }
+                alert(msg);
               } else {
+                // APPEND com regra de unicidade: Chave = Nome + ICMS
+                // - Se Nome+ICMS NÃO existe → ADICIONA
+                // - Se Nome+ICMS existe com Situação DIFERENTE → ATUALIZA (nova Situação prevalece)
+                // - Se Nome+ICMS existe com Situação IGUAL → IGNORA (sem alteração)
+                let addedCount = 0;
+                let updatedCount = 0;
+                let skippedCount = 0;
                 setRules(prev => {
                   const merged = new Map<string, TaxRule>();
-                  prev.forEach(r => merged.set(normalizeStr(r.item), r));
-                  newRules.forEach(r => merged.set(normalizeStr(r.item), r));
+                  prev.forEach(r => merged.set(normalizeStr(r.item) + '_' + r.hasIcms, r));
+                  newRules.forEach(r => {
+                    const key = normalizeStr(r.item) + '_' + r.hasIcms;
+                    const existing = merged.get(key);
+                    if (!existing) {
+                      merged.set(key, r);
+                      addedCount++;
+                    } else if (existing.situacao !== r.situacao) {
+                      merged.set(key, r);
+                      updatedCount++;
+                    } else {
+                      skippedCount++;
+                    }
+                  });
                   return Array.from(merged.values());
                 });
+                setIsImportingRules(false);
+                let msg = `Importação concluída!\n✅ ${addedCount} regras novas adicionadas.\n🔄 ${updatedCount} regras atualizadas (mesma chave, Situação diferente).\n⏭️ ${skippedCount} regras idênticas ignoradas.`;
+                if (!foundSituacaoColumn) {
+                  msg += "\n\n⚠️ AVISO: A coluna de 'SITUAÇÃO' não foi encontrada. Novos itens salvos como Situação 1.";
+                }
+                alert(msg);
               }
-
-              setIsImportingRules(false);
-              let msg = `${newRules.length} itens únicos compilados e ${mode === 'replace' ? 'substituídos' : 'adicionados'} com sucesso!`;
-              if (!foundSituacaoColumn) {
-                msg += "\n\n⚠️ AVISO: A coluna de 'SITUAÇÃO' não foi encontrada. Todos os itens foram salvos como Situação 1. Certifique-se de que a coluna se chama 'Situação', 'CST', ou 'Tipo'.";
-              }
-              alert(msg);
 
             } catch (err) {
               console.error(err);
@@ -559,16 +571,16 @@ export default function App() {
         // Update local rules
           setRules(prev => {
             const merged = new Map<string, TaxRule>();
-            prev.forEach(r => merged.set(normalizeStr(r.item), r));
-            newRules.forEach(r => merged.set(normalizeStr(r.item), r));
+            prev.forEach(r => merged.set(normalizeStr(r.item) + '_' + r.hasIcms, r));
+            newRules.forEach(r => merged.set(normalizeStr(r.item) + '_' + r.hasIcms, r));
             return Array.from(merged.values());
           });
         
         // Final re-process of active analysis if current data exists
         if (rawData.length > 0) {
           const currentAllRules = Array.from(new Map([
-            ...rules.map(r => [normalizeStr(r.item), r]),
-            ...newRules.map(r => [normalizeStr(r.item), r])
+            ...rules.map(r => [normalizeStr(r.item) + '_' + r.hasIcms, r]),
+            ...newRules.map(r => [normalizeStr(r.item) + '_' + r.hasIcms, r])
           ].reverse()).values()) as TaxRule[];
           
           const newlyProcessed = processTaxData(rawData, currentAllRules);
@@ -749,7 +761,9 @@ export default function App() {
       // Update rules in state
       const nextRules = [...rules];
       newRulesBatch.forEach(nr => {
-        const idx = nextRules.findIndex(r => normalizeStr(r.item) === normalizeStr(nr.item));
+        const idx = nextRules.findIndex(r => 
+          (normalizeStr(r.item) + '_' + r.hasIcms) === (normalizeStr(nr.item) + '_' + nr.hasIcms)
+        );
         if (idx >= 0) nextRules[idx] = nr;
         else nextRules.push(nr);
       });
