@@ -490,6 +490,7 @@ export default function App() {
   const handleAuditFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) handleFile(file, 'audit');
+    e.target.value = '';
   };
 
   const handleRulesFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -733,7 +734,12 @@ export default function App() {
 
 
   const exportToPDF = () => {
+    const originalTitle = document.title;
+    document.title = `${companyName || 'Apuração'}_TRIBUTACAO_COMPLETA`;
     window.print();
+    setTimeout(() => {
+      document.title = originalTitle;
+    }, 1000);
   };
 
   const saveTriageAndRefresh = async () => {
