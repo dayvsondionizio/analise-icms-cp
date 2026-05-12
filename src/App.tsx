@@ -837,7 +837,7 @@ export default function App() {
             <Database size={28} className="text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-black tracking-tighter">ANÁLISE ICMS <span className="text-blue-400">CP</span></h1>
+            <h1 className="text-2xl font-black tracking-tighter">ANÁLISE ICMS <span className="text-rose-400">CP</span></h1>
             <p className="text-[10px] uppercase tracking-[0.3em] opacity-50 font-bold">Auditoria de Situações ICMS</p>
           </div>
         </div>
@@ -849,8 +849,8 @@ export default function App() {
               setError(null);
             }}
             className={cn(
-              "text-sm font-black tracking-widest uppercase transition-all hover:text-blue-400",
-              activeTab === 'analise' ? "text-blue-400" : "text-white/70"
+              "text-sm font-black tracking-widest uppercase transition-all hover:text-rose-400",
+              activeTab === 'analise' ? "text-rose-400" : "text-white/70"
             )}
           >
             Análise ICMS
@@ -858,8 +858,8 @@ export default function App() {
           <button 
             onClick={() => setActiveTab('expansao')}
             className={cn(
-              "text-sm font-black tracking-widest uppercase transition-all hover:text-blue-400",
-              activeTab === 'expansao' ? "text-blue-400" : "text-white/70"
+              "text-sm font-black tracking-widest uppercase transition-all hover:text-rose-400",
+              activeTab === 'expansao' ? "text-rose-400" : "text-white/70"
             )}
           >
             Expansão do Banco de Regras
@@ -867,8 +867,8 @@ export default function App() {
           <button 
             onClick={() => setActiveTab('base')}
             className={cn(
-              "text-sm font-black tracking-widest uppercase transition-all hover:text-blue-400 flex items-center gap-2",
-              activeTab === 'base' ? "text-blue-400" : "text-white/70"
+              "text-sm font-black tracking-widest uppercase transition-all hover:text-rose-400 flex items-center gap-2",
+              activeTab === 'base' ? "text-rose-400" : "text-white/70"
             )}
           >
             <Settings size={16} /> Banco de Regras
@@ -909,11 +909,11 @@ export default function App() {
                   >
                     <div className={cn(
                       "relative p-12 border-4 border-dashed rounded-[40px] bg-white transition-all duration-500 flex flex-col items-center",
-                      isDragging ? "border-blue-400 bg-blue-50 shadow-2xl scale-105" : "border-slate-200 hover:border-navy hover:shadow-2xl"
+                      isDragging ? "border-rose-400 bg-rose-50 shadow-2xl scale-105" : "border-slate-200 hover:border-navy hover:shadow-2xl"
                     )}>
                       <div className={cn(
                         "w-24 h-24 rounded-3xl flex items-center justify-center mb-8 transition-all duration-500",
-                        isDragging ? "bg-blue-400 rotate-12" : "bg-slate-50 group-hover:bg-navy group-hover:rotate-6"
+                        isDragging ? "bg-rose-400 rotate-12" : "bg-slate-50 group-hover:bg-navy group-hover:rotate-6"
                       )}>
                         <Upload className={cn(
                           "transition-colors",
@@ -1047,7 +1047,7 @@ export default function App() {
                       {/* Summary Cards */}
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                         <StatCard title="Valor Contábil Total" value={formatCurrency(totals.contabil)} icon={FileText} colorClass="text-slate-400" />
-                        <StatCard title="ICMS Apurado" value={formatCurrency(totals.icms)} icon={BarChart3} colorClass="text-blue-500" />
+                        <StatCard title="ICMS Apurado" value={formatCurrency(totals.icms)} icon={BarChart3} colorClass="text-rose-500" />
                         <StatCard title="Outros Débitos" value={formatCurrency(totals.outros)} icon={Plus} colorClass="text-amber-500" />
                         <StatCard title="Estorno de Débito" value={formatCurrency(totals.estorno)} icon={Trash2} colorClass="text-red-500" />
                       </div>
@@ -1248,7 +1248,7 @@ export default function App() {
                               <td className="px-8 py-5 text-center">
                                 <span className="px-3 py-1 bg-white border border-slate-200 rounded-lg text-[10px] font-black text-slate-400">{row.cstIcms}</span>
                               </td>
-                              <td className="px-8 py-5 text-right text-sm font-black text-blue-600">{formatCurrency(row.valorIcms)}</td>
+                              <td className="px-8 py-5 text-right text-sm font-black text-rose-600">{formatCurrency(row.valorIcms)}</td>
                               <td className="px-8 py-5 text-right text-sm font-black text-amber-600">
                                 {row.outrosDebitos > 0 ? formatCurrency(row.outrosDebitos) : '-'}
                               </td>
@@ -1300,21 +1300,21 @@ export default function App() {
                   Alimente o banco de regras com novos itens. O sistema <span className="text-navy font-bold">adicionará</span> as novas regras às existentes.
                 </p>
                 
-                <div className="mt-8 p-6 bg-blue-50 border border-blue-100 rounded-3xl max-w-md mx-auto">
-                  <h4 className="text-blue-800 font-black text-xs uppercase tracking-widest mb-3 flex items-center justify-center gap-2">
+                <div className="mt-8 p-6 bg-rose-50 border border-rose-100 rounded-3xl max-w-md mx-auto">
+                  <h4 className="text-rose-800 font-black text-xs uppercase tracking-widest mb-3 flex items-center justify-center gap-2">
                     <FileSpreadsheet size={16} /> Formato da Planilha
                   </h4>
                   <div className="flex flex-wrap justify-center gap-2">
                     {['NCM', 'NATUREZA', 'ITEM', 'BASE CÁLCULO ICM', 'SITUAÇÃO'].map(col => (
-                      <span key={col} className="px-2 py-1 bg-white border border-blue-200 rounded text-[10px] font-black text-blue-600">
+                      <span key={col} className="px-2 py-1 bg-white border border-rose-200 rounded text-[10px] font-black text-rose-600">
                         {col}
                       </span>
                     ))}
                   </div>
-                  <p className="text-[10px] text-blue-600/70 font-bold mt-3 uppercase tracking-tight">
-                    A coluna <span className="text-blue-800 underline">VALOR ICMS</span> deve conter <span className="text-blue-800">SIM</span> ou <span className="text-blue-800">NÃO</span>.
+                  <p className="text-[10px] text-rose-600/70 font-bold mt-3 uppercase tracking-tight">
+                    A coluna <span className="text-rose-800 underline">VALOR ICMS</span> deve conter <span className="text-rose-800">SIM</span> ou <span className="text-rose-800">NÃO</span>.
                   </p>
-                  <p className="text-[10px] text-blue-600/50 font-medium mt-1 uppercase tracking-tight">
+                  <p className="text-[10px] text-rose-600/50 font-medium mt-1 uppercase tracking-tight">
                     SITUAÇÃO: 1 (Normal), 2 (Outros Débitos 20,5%), 3 (Estorno ICMS).
                   </p>
                 </div>
